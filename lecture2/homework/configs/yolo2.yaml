@@ -1,0 +1,36 @@
+#需要自行将配置文件中的相机参数补全
+
+yolo_name: yolov5
+yolov5_model_path: assets/yolov5.xml
+device: CPU
+min_confidence: 0.8
+use_traditional: true
+roi:
+  x: 420
+  y: 50
+  width: 600
+  height: 600
+
+use_roi: false
+threshold: 150
+
+# AprilTag配置
+
+# 检测参数
+auto_charge:
+  # AprilTag配置
+  tag_family: "tag36h11"
+  tag_size: 0.080  # m
+  tag_ids: [10, 18, 24]
+  corner_refinement_method: 0  # CORNER_REFINE_SUBPIX
+  min_marker_perimeter_rate: 0.02
+  adaptive_thresh_win_size_min: 26
+  adaptive_thresh_win_size_max: 98
+  adaptive_thresh_win_size_step: 13
+  adaptive_thresh_constant: 15.0
+
+# 这些参数太变态了
+# 我一个参数都不认识，随便动一点动一点看效果的
+# 最后识别的没那么满意，但学长说挺好的了（感恩
+# 听学长说才知道原来那些相机的什么曝光增益要写在这个文件里
+# hh不是很懂直接封进类里面去了
