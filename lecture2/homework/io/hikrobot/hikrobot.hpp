@@ -1,3 +1,7 @@
+// NOTE:
+// This file is provided for reference only.
+// You do not need to use this code, and you should not rely on it in your implementation.
+
 #ifndef IO__HIKROBOT_HPP
 #define IO__HIKROBOT_HPP
 

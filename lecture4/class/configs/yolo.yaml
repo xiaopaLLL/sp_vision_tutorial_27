@@ -1,0 +1,23 @@
+yolo_name: yolov5
+yolov5_model_path: assets/yolov5.xml
+device: CPU
+min_confidence: 0.8
+use_traditional: true
+roi: 
+  x: 420
+  y: 50
+  width: 600
+  height: 600
+
+use_roi: false
+threshold: 150
+# video  : 从 video.path 读视频
+# camera : 用 hikrobot 相机
+source: video
+video:
+  path: assets/video.avi
+# loop: true
+# camera:
+#   exposure_ms: 2.5
+#   gain: 16.9
+#   vid_pid: "2bdf:0001"

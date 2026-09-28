@@ -1,3 +1,7 @@
+// NOTE:
+// This file is provided for reference only.
+// You do not need to use this code, and you should not rely on it in your implementation.
+
 #include "hikrobot.hpp"
 
 #include <libusb-1.0/libusb.h>
