@@ -11,8 +11,11 @@ std::mutex mutex;
 
 void work()
 {
+  std::lock_guard<std::mutex> lock(mutex);
   for (int i = 0; i < N; ++i) {
+    // mutex.lock();
     counter++;
+    // mutex.unlock();
   }
 }
 
