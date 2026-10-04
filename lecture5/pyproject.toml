@@ -1,0 +1,23 @@
+[project]
+name = "lecture5-kalman-tutorial"
+version = "0.1.0"
+description = "RoboMaster Kalman filtering teaching simulations"
+requires-python = ">=3.11"
+dependencies = ["numpy", "opencv-python", "scipy", "rerun-sdk>=0.35.0"]
+
+[dependency-groups]
+dev = ["pytest", "ruff", "ty"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
