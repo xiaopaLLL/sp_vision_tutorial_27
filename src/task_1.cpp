@@ -80,18 +80,20 @@ int main(int argc, char * argv[])
         return a.ypd_in_world[2] < b.ypd_in_world[2];
       });
 
-    // send the gimbal command to aim at target
+    // get yaw and pitch of the target armor
     float target_yaw = target_armor->ypd_in_world[0];
     float target_pitch = target_armor->ypd_in_world[1];
-    gimbal.send(
-      true, false, target_yaw,
-      -target_pitch);  // gimbal's receiving pitch is opposite to solver result
+
+    // send the gimbal command to aim at target
+    float send_yaw = target_yaw;
+    float send_pitch = -target_pitch;  // gimbal's receiving pitch is opposite to solver result
+    gimbal.send(true, false, send_yaw, send_pitch);
 
     // plot the results
     nlohmann::json j;
     j["time"] = tools::delta_time(t, tStart);
-    j["yaw"] = target_yaw;
-    j["pitch"] = target_pitch;
+    j["yaw"] = send_yaw;
+    j["pitch"] = send_pitch;
     plotter.plot(j);
 
     // Your code end
