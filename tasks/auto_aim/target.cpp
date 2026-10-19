@@ -274,11 +274,13 @@ Eigen::Vector3d Target::h_armor_xyz(const Eigen::VectorXd & x, int id) const
   auto r = (use_l_h) ? x[8] + x[9] : x[8];
   auto armor_x = x[0] - r * std::cos(angle);
   auto armor_y = x[2] - r * std::sin(angle);
+  auto armor_z = (use_l_h) ? x[4] + x[10] : x[4];
 
-  double dh = 0.0;  // 高度差
   // Task_3 TODO: 为前哨站建立专有的高度差计算方法
-
-  auto armor_z = x[4] + dh;  //task_3 tips
+  /*
+  double dh = 0.0;  // 高度差
+  auto armor_z = x[4] + dh;  // task_3 tips
+  */
 
   return {armor_x, armor_y, armor_z};
 }
