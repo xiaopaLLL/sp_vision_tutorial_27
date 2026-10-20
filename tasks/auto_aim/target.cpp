@@ -40,9 +40,8 @@ Target::Target(
   // l: dh1 for outpost / r2 - r1 for vehicles
   // h: dh2 for outpost / z2 - z1 for vehicles
   Eigen::VectorXd x0{{center_x, 0, center_y, 0, center_z, 0, ypr[0], 0, r, 0, 0}};  //初始化预测量
-  Eigen::VectorXd P0_dig_car{
-    {1, 64, 1, 64, 1, 64, 0.4, 100, 0, 0,
-     0}};  // Task_2 TODO: 根据实际情况，调整“后三项”预测量协方差矩阵参数
+  Eigen::VectorXd P0_dig_car{{1, 64, 1, 64, 1, 64, 0.4, 100, 1e-4, 1e-2, 5e-2}};
+  // Task_2 TODO: 根据实际情况，调整“后三项”预测量协方差矩阵参数 r l h
 
   // Task_3 TODO: 为前哨站建立专有的初始状预测量及其协方差矩阵参数（P0_dig_outpost）
 
