@@ -45,19 +45,18 @@ int main(int argc, char * argv[])
   std::chrono::steady_clock::time_point t;
 
   // my definitions
-  auto_aim::Target target;  // target class
+  auto_aim::Target target;
   std::chrono::steady_clock::time_point tStart, last_fire;
   const double L_x = 0.171, L_y = 0.0;
-  int to_fire = 0;
+  int to_fire = 1;  //zero when manual
   int fired = 0;
-  bool can_fire = false;
 
   while (!exiter.exit()) {
     // Your code start
-    auto state = gimbal.state();  // bullet speed
+
+    // get bullet speed
+    auto state = gimbal.state();
     float v0 = (state.bullet_speed > 10 && state.bullet_speed < 30) ? state.bullet_speed : 23.67;
-    // std::cout << v0 << std::endl;
-    // v0 = 20;
 
     // try read a frame from camera
     if (!camera.try_read_for(img, t, 100ms)) {
@@ -72,8 +71,7 @@ int main(int argc, char * argv[])
     // show the image (done in yolo so only waitKey)
     const int key = cv::waitKey(1);
     if (key == 'q') break;
-    if (key == 'f') {
-      can_fire = true;
+    if (key == 'f') {  // press f to fire
       to_fire = 3;
       std::cout << "to_fire: " << to_fire << std::endl;
     }
@@ -96,93 +94,79 @@ int main(int argc, char * argv[])
     }
 
     if (target.isinit) {
+      // use kalman filtering to predict and update the armor
       if (target.convergened()) target.predict(t);
       if (target_armor != armors.end()) target.update(*target_armor);
 
-      // estimate fly time
-      Eigen::Vector4d target_xyza = target.armor_xyza_list()[0];
-      for (const Eigen::Vector4d & xyza : target.armor_xyza_list()) {
-        if (tools::xyz2ypd(xyza.head(3))[2] < tools::xyz2ypd(target_xyza.head(3))[2])
-          target_xyza = xyza;
-      }
-      double d = std::sqrt(target_xyza[0] * target_xyza[0] + target_xyza[1] * target_xyza[1]);
-      double h = target_xyza[2];
-      double fly_time;
-      double aim_pitch;
-      if (!tools::solve_actual_trajectory(v0, d, h, 3, L_x, L_y, aim_pitch, fly_time)) {
-        tools::logger()->warn("Failed to solve actual trajectory!");
-        continue;
-      }
+      // estimate fly time for the first time
+      double d =
+        std::sqrt(target.ekf_x()[0] * target.ekf_x()[0] + target.ekf_x()[2] * target.ekf_x()[2]) -
+        target.ekf_x()[8];
+      double h = target.ekf_x()[4];
+      double aim_pitch, fly_time;
+      tools::solve_actual_trajectory(v0, d, h, 3, L_x, L_y, aim_pitch, fly_time);
 
-      // predict the position after fly_time (considering gravity influence)
-      // fly_time = 0;
-      auto_aim::Target predicted_target = target;
-      double latency = tools::delta_time(std::chrono::steady_clock::now(), t);
-      predicted_target.predict(latency + fly_time);
-
-      // choose the closest armor as the target armor to aim
+      // iterate fly time and pitch
+      double best_id = 0;
       double best_facing = 1e9;
-      Eigen::Vector4d predicted_target_xyza = predicted_target.armor_xyza_list()[0];
-      for (const Eigen::Vector4d & xyza : predicted_target.armor_xyza_list()) {
-        double facing = std::abs(
-          tools::limit_rad(
-            xyza[3] - std::atan2(predicted_target.ekf_x()[2], predicted_target.ekf_x()[0])));
-        if (facing < best_facing) {
-          best_facing = facing;
-          predicted_target_xyza = xyza;
+      std::vector<Eigen::Vector4d> xyza_list;
+      Eigen::VectorXd predicted_ekf_x;
+      const int iter = 5;
+      for (int i = 0; i < iter; i++) {
+        auto_aim::Target predicted_target = target;
+        double latency =
+          tools::delta_time(std::chrono::steady_clock::now(), t);  //add a latency when calculated
+        predicted_target.predict(latency + fly_time);  //predict the position target will be at
+        predicted_ekf_x = predicted_target.ekf_x();
+        // get the best armor (minimal angle error)
+        xyza_list = predicted_target.armor_xyza_list();
+        best_facing = 1e9;
+        for (int j = 0; j < xyza_list.size(); j++) {
+          double facing = std::abs(
+            tools::limit_rad(xyza_list[j][3] - std::atan2(predicted_ekf_x[2], predicted_ekf_x[0])));
+          if (facing < best_facing) {
+            best_facing = facing;
+            best_id = j;
+          }
         }
+        d = std::sqrt(
+          xyza_list[best_id][0] * xyza_list[best_id][0] +
+          xyza_list[best_id][1] * xyza_list[best_id][1]);
+        h = xyza_list[best_id][2];
+        tools::solve_actual_trajectory(v0, d, h, 3, L_x, L_y, aim_pitch, fly_time);
       }
-
-      // solve the yaw and pitch to aim at the target armor
-      double aim_yaw = std::atan2(predicted_target_xyza[1], predicted_target_xyza[0]);
-      d = std::sqrt(
-        predicted_target_xyza[0] * predicted_target_xyza[0] +
-        predicted_target_xyza[1] * predicted_target_xyza[1]);
-      h = predicted_target_xyza[2];
-      if (!tools::solve_actual_trajectory(v0, d, h, 3, L_x, L_y, aim_pitch, fly_time)) {
-        tools::logger()->warn("Failed to solve actual trajectory!");
-        continue;
-      }
-
-      float send_yaw = aim_yaw;
-      float send_pitch = -aim_pitch;  // send pitch is opposite to real pitch
-      // std::cout << send_yaw << ' ' << send_pitch << std::endl;
+      auto aim_yaw = std::atan2(xyza_list[best_id][1], xyza_list[best_id][0]);
 
       // send message to gimbal
-      if (predicted_target.convergened()) {
-        // fire only when the armor facing the gimbal enough
-        if (
-          can_fire && to_fire > 0 && tools::delta_time(t, last_fire) > 1.5 && best_facing < 0.1) {
-          gimbal.send(true, true, send_yaw, send_pitch);
-          to_fire--;
-          fired++;
-          last_fire = t;
-        } else {
-          gimbal.send(true, false, send_yaw, send_pitch);
-        }
+      float send_yaw = aim_yaw;
+      float send_pitch = -aim_pitch;  // send pitch is opposite to real pitch
+      // fire only when the armor facing the gimbal enough
+      if (to_fire > 0 && tools::delta_time(t, last_fire) > 0.7 && best_facing < 0.04) {
+        gimbal.send(true, true, send_yaw, send_pitch);
+        // to_fire--; // commented in infinite & auto fire mode
+        fired++;
+        last_fire = t;
       } else {
-        gimbal.send(false, false, 0, 0);
+        gimbal.send(true, false, send_yaw, send_pitch);
       }
 
       // plot the results
       nlohmann::json j;
       j["time"] = tools::delta_time(t, tStart);
-      j["yaw"] = send_yaw;
-      j["pitch"] = send_pitch;
-      j["targ_x"] = target_xyza[0];
-      j["targ_y"] = target_xyza[1];
-      j["targ_z"] = target_xyza[2];
-      j["r"] = predicted_target.ekf_x()[8];
-      j["l"] = predicted_target.ekf_x()[9];
-      j["angle"] = predicted_target.ekf_x()[6];
-      j["w"] = predicted_target.ekf_x()[7];
+      j["send_yaw"] = send_yaw;
+      j["send_pitch"] = -send_pitch;
+      j["targ_x"] = xyza_list[best_id][0];
+      j["targ_y"] = xyza_list[best_id][1];
+      j["targ_z"] = xyza_list[best_id][2];
+      j["r"] = predicted_ekf_x[8];
+      j["l"] = predicted_ekf_x[9];
+      j["angle"] = predicted_ekf_x[6];
+      j["w"] = predicted_ekf_x[7];
       j["fired"] = fired;
-      j["d"] = std::sqrt(
-        predicted_target.ekf_x()[0] * predicted_target.ekf_x()[0] +
-        predicted_target.ekf_x()[2] * predicted_target.ekf_x()[2]);
-      j["h"] = predicted_target.ekf_x()[10];
+      j["d"] = d;
+      j["h"] = h;
       j["v0"] = v0;
-      j["z"] = predicted_target.ekf_x()[4];
+      j["z"] = predicted_ekf_x[4];
       plotter.plot(j);
     }
 
