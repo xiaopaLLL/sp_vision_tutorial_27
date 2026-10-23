@@ -44,8 +44,10 @@ Target::Target(
   // Task_2 TODO: 根据实际情况，调整“后三项”预测量协方差矩阵参数 r l h
 
   // Task_3 TODO: 为前哨站建立专有的初始状预测量及其协方差矩阵参数（P0_dig_outpost）
+  Eigen::VectorXd P0_dig_outpost{{1, 64, 1, 64, 1, 64, 2.5, 1, 1e-4, 1.5e-2, 1.5e-2}};
 
   Eigen::Matrix<double, 11, 11> P0 = P0_dig_car.asDiagonal();
+  if (armor.name == ArmorName::outpost) P0 = P0_dig_outpost.asDiagonal();
 
   // 防止夹角求和出现异常值
   auto x_add = [](const Eigen::VectorXd & a, const Eigen::VectorXd & b) -> Eigen::VectorXd {
@@ -244,10 +246,16 @@ bool Target::diverged() const
   //Task_3 TODO: 为前哨站建立专有的发散判定条件
 
   auto l_ok = ekf_.x[8] + ekf_.x[9] > 0.05 && ekf_.x[8] + ekf_.x[9] < 0.5;
+  auto h_ok = true;
 
-  if (r_ok && l_ok) return false;
+  if (is_layered_outpost()) {  // diverged condition of outpost
+    l_ok = ekf_.x[9] > -0.5 && ekf_.x[9] < 0.5;
+    h_ok = ekf_.x[10] > -0.5 && ekf_.x[10] < 0.5;
+  }
 
-  tools::logger()->debug("[Target] r={:.3f}, l={:.3f}", ekf_.x[8], ekf_.x[9]);
+  if (r_ok && l_ok && h_ok) return false;
+
+  tools::logger()->debug("[Target] r={:.3f}, l={:.3f}, h={:.3f}", ekf_.x[8], ekf_.x[9], ekf_.x[10]);
   return true;
 }
 
@@ -276,10 +284,11 @@ Eigen::Vector3d Target::h_armor_xyz(const Eigen::VectorXd & x, int id) const
   auto armor_z = (use_l_h) ? x[4] + x[10] : x[4];
 
   // Task_3 TODO: 为前哨站建立专有的高度差计算方法
-  /*
-  double dh = 0.0;  // 高度差
-  auto armor_z = x[4] + dh;  // task_3 tips
-  */
+  if (use_outpost_h) {
+    double dh = 0.0;  // 高度差
+    dh = (id == 0) ? 0.0 : (id == 1) ? x[9] : (id == 2) ? x[10] : 0.0;
+    armor_z = x[4] + dh;  // task_3 tips
+  }
 
   return {armor_x, armor_y, armor_z};
 }
@@ -302,13 +311,19 @@ Eigen::MatrixXd Target::h_jacobian(const Eigen::VectorXd & x, int id) const
   auto dz_dh = use_l_h ? 1.0 : 0.0;
 
   //  Task_3 tips:
-  // auto dz_dl = 0.0; // Task_3 TODO: 为前哨站建立专有的雅各比阵计算方法
+  auto dz_dl = 0.0;     // Task_3 TODO: 为前哨站建立专有的雅各比阵计算方法
+  if (use_outpost_h) {  // h_jacobian of outpost
+    dx_dl = 0;
+    dy_dl = 0;
+    dz_dl = (id == 0) ? 0.0 : (id == 1) ? 1.0 : (id == 2) ? 0.0 : 0.0;
+    dz_dh = (id == 0) ? 0.0 : (id == 1) ? 0.0 : (id == 2) ? 1.0 : 0.0;
+  }
 
   // clang-format off
   Eigen::MatrixXd H_armor_xyza{
     {1, 0, 0, 0, 0, 0, dx_da, 0, dx_dr, dx_dl,     0},
     {0, 0, 1, 0, 0, 0, dy_da, 0, dy_dr, dy_dl,     0},
-    {0, 0, 0, 0, 1, 0,     0, 0,     0,     0, dz_dh},
+    {0, 0, 0, 0, 1, 0,     0, 0,     0, dz_dl, dz_dh}, // dz_dl added, values 0 if not outpost
     {0, 0, 0, 0, 0, 0,     1, 0,     0,     0,     0}
   };
   // clang-format on
